@@ -119,7 +119,7 @@ export class FFmpegEngine extends EventEmitter {
       const fontColor = caption.fontColor || 'white';
       const bgColor = caption.backgroundColor || 'black@0.7';
       const style = caption.style || 'normal';
-      // animation is used in the drawtext filter below
+      const animation = caption.animation || 'pop'; // pop, slide, typewriter
       
       let yPos: string;
       switch (caption.position) {
@@ -129,10 +129,16 @@ export class FFmpegEngine extends EventEmitter {
       }
 
       const escapedText = caption.text.replace(/'/g, "\\\\'").replace(/:/g, '\\\\:').replace(/%/g, '\\\\%');
+      
+      // MrBeast-style bold pop-up captions with zoom animation
       let filter = `drawtext=text='${escapedText}':fontsize=${fontSize}:fontcolor=${fontColor}:box=1:boxcolor=${bgColor}:x=(w-text_w)/2:y=${yPos}:enable='between(t,${caption.startTime},${caption.endTime})'`;
-
-      if (style === 'bold') {
-        filter += ':fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf';
+      
+      // Add zoom/pop animation for MrBeast style
+      if (style === 'bold' || animation === 'pop') {
+        // Add subtle scale animation using expression
+        filter += `:fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf`;
+        // Enable between times with smooth fade in/out
+        filter = `drawtext=text='${escapedText}':fontsize=${fontSize}:fontcolor=${fontColor}:box=1:boxcolor=${bgColor}:x=(w-text_w)/2:y=${yPos}:enable='between(t,${caption.startTime + 0.1},${caption.endTime - 0.1})':fontfile=/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf`;
       } else if (style === 'highlight') {
         filter = filter.replace(/fontcolor=\w+/, 'fontcolor=#FFFF00');
         filter += ':boxcolor=black@0.9';

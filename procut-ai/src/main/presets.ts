@@ -3,8 +3,8 @@ import { PresetConfig, EditPreset, EditingPreset } from '../shared/types';
 export const PRESETS: Record<EditPreset, PresetConfig> = {
   mrbeast: {
     name: 'mrbeast',
-    cutThreshold: 2.0, // Cut silence longer than 2 seconds
-    zoomIntensity: 1.5, // Aggressive zooms (1.5x)
+    cutThreshold: 1.5, // Ultra-aggressive: cut silence longer than 1.5 seconds
+    zoomIntensity: 1.8, // Very aggressive zooms (1.8x)
     transitionType: 'xfade',
     captionStyle: 'bold',
     sfxDensity: 'high',
@@ -13,7 +13,7 @@ export const PRESETS: Record<EditPreset, PresetConfig> = {
   documentary: {
     name: 'documentary',
     cutThreshold: 4.0, // Longer pauses allowed
-    zoomIntensity: 1.2, // Subtle zooms
+    zoomIntensity: 1.1, // Very subtle zooms
     transitionType: 'fade',
     captionStyle: 'normal',
     sfxDensity: 'low',
@@ -21,8 +21,8 @@ export const PRESETS: Record<EditPreset, PresetConfig> = {
   },
   tutorial: {
     name: 'tutorial',
-    cutThreshold: 3.0,
-    zoomIntensity: 1.3,
+    cutThreshold: 2.5,
+    zoomIntensity: 1.4,
     transitionType: 'slideleft',
     captionStyle: 'highlight',
     sfxDensity: 'medium',
@@ -30,8 +30,8 @@ export const PRESETS: Record<EditPreset, PresetConfig> = {
   },
   vlog: {
     name: 'vlog',
-    cutThreshold: 2.5,
-    zoomIntensity: 1.4,
+    cutThreshold: 2.0,
+    zoomIntensity: 1.5,
     transitionType: 'dissolve',
     captionStyle: 'bold',
     sfxDensity: 'medium',
@@ -137,6 +137,7 @@ function generateSFXForPreset(plan: any, density: 'low' | 'medium' | 'high'): an
 
 /**
  * Get recommended preset based on video characteristics
+ * MrBeast preset is the default for high-energy, short-form content
  */
 export function recommendPreset(videoInfo: {
   duration: number;
@@ -145,12 +146,17 @@ export function recommendPreset(videoInfo: {
 }): EditPreset {
   const { duration, hasSpeech, mood } = videoInfo;
   
+  // Default to MrBeast for high-energy, engaging content (most common use case)
+  if (duration < 300 && (!mood || mood === 'energetic' || mood === 'neutral')) {
+    return 'mrbeast';
+  }
+  
   // Short, high-energy videos -> MrBeast
   if (duration < 180 && mood === 'energetic') {
     return 'mrbeast';
   }
   
-  // Long-form with speech -> Documentary
+  // Long-form with speech and calm mood -> Documentary
   if (duration > 600 && hasSpeech && mood === 'calm') {
     return 'documentary';
   }
@@ -160,7 +166,7 @@ export function recommendPreset(videoInfo: {
     return 'tutorial';
   }
   
-  // Default to vlog style
+  // Default fallback to vlog style
   return 'vlog';
 }
 
