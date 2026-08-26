@@ -1,30 +1,20 @@
 import ffmpeg from 'fluent-ffmpeg';
+import { CutPoint, Caption, ZoomPoint, Transition, FFmpegProgress, VideoInfo } from '../shared/types';
 
-export interface VideoInfo {
-  duration: number;
-  width: number;
-  height: number;
-  fps: number;
-  codec: string;
-  hasAudio: boolean;
+export interface EditingPlan {
+  inputPath: string;
+  outputPath: string;
+  cuts?: CutPoint[];
+  effects?: string[];
+  captions?: Caption[];
+  backgroundMusic?: string;
+  zoomPoints?: ZoomPoint[];
+  transitions?: Transition[];
 }
 
-export interface CutPoint {
-  startTime: number;
-  endTime: number;
-  keep?: boolean;
-  reason?: string;
-}
-
-export interface FFmpegProgress {
-  percent: number;
-  currentFps: number;
-  currentKbps: number;
-  targetSize: number;
-  timemark: string;
-  eta?: number;
-}
-
+/**
+ * Get video metadata using ffprobe
+ */
 export async function getVideoInfo(videoPath: string): Promise<VideoInfo> {
   return new Promise((resolve, reject) => {
     ffmpeg.ffprobe(videoPath, (err: any, metadata: any) => {
@@ -35,11 +25,14 @@ export async function getVideoInfo(videoPath: string): Promise<VideoInfo> {
         reject(new Error('No video stream found'));
         return;
       }
+      const frameRateParts = (videoStream.r_frame_rate || '30/1').split('/');
+      const fps = Number(frameRateParts[0]) / Number(frameRateParts[1]) || 30;
+      
       resolve({
         duration: metadata.format.duration || 0,
         width: videoStream.width || 0,
         height: videoStream.height || 0,
-        fps: Number(videoStream.r_frame_rate?.split('/')[0]) / Number(videoStream.r_frame_rate?.split('/')[1]) || 30,
+        fps: fps,
         codec: videoStream.codec_name || 'unknown',
         hasAudio: !!audioStream,
       });
@@ -47,6 +40,9 @@ export async function getVideoInfo(videoPath: string): Promise<VideoInfo> {
   });
 }
 
+/**
+ * Cut video segment between start and end times
+ */
 export async function cutVideo(
   inputPath: string,
   outputPath: string,
@@ -77,40 +73,40 @@ export async function cutVideo(
   });
 }
 
-export interface EditingPlan {
-  inputPath: string;
-  outputPath: string;
-  cuts?: CutPoint[];
-  effects?: string[];
-  captions?: Caption[];
-  backgroundMusic?: string;
-  zoomPoints?: ZoomPoint[];
-  transitions?: Transition[];
+/**
+ * Plan caption filter parameters based on position
+ */
+function planCaptionsMap(caption: Caption): {
+  yPos: string;
+  fontSize: number;
+  fontColor: string;
+  filter: string;
+} {
+  const captionPosition = caption.position || 'bottom';
+  
+  let yPos = 'h*0.9';
+  if (captionPosition === 'top') {
+    yPos = 'h*0.1';
+  } else if (captionPosition === 'center') {
+    yPos = 'h/2';
+  }
+  
+  const fontSize = caption.fontSize || 24;
+  const fontColor = caption.fontColor || 'white';
+  
+  // Escape special characters in text for drawtext filter
+  const escapedText = caption.text
+    .replace(/'/g, "\\\\'")
+    .replace(/:/g, '\\\\:');
+  
+  const filter = `drawtext=text='${escapedText}':fontsize=${fontSize}:fontcolor=${fontColor}:box=1:boxcolor=black@0.7:x=(w-text_w)/2:y=${yPos}:enable='between(t,${caption.startTime},${caption.endTime})'`;
+  
+  return { yPos, fontSize, fontColor, filter };
 }
 
-export interface Caption {
-  text: string;
-  startTime: number;
-  endTime: number;
-  fontSize?: number;
-  fontColor?: string;
-  position?: 'bottom' | 'top' | 'center';
-}
-
-export interface ZoomPoint {
-  timestamp: number;
-  duration: number;
-  zoomLevel: number;
-  x?: number;
-  y?: number;
-}
-
-export interface Transition {
-  type: 'xfade' | 'fade';
-  timestamp: number;
-  duration: number;
-}
-
+/**
+ * Generate FFmpeg command string from editing plan
+ */
 export function generateFFmpegCommand(plan: EditingPlan): string {
   let command = `ffmpeg -i "${plan.inputPath}"`;
   const filters: string[] = [];
@@ -128,7 +124,7 @@ export function generateFFmpegCommand(plan: EditingPlan): string {
   }
   
   // Add zoompan effect for dynamic zooms
-  if (plan.effects?.includes('zoompan') || plan.zoomPoints?.length) {
+  if (plan.effects?.includes('zoompan') || (plan.zoomPoints && plan.zoomPoints.length > 0)) {
     const zoomPoints = plan.zoomPoints || [];
     if (zoomPoints.length > 0) {
       // Create zoompan filter based on zoom points
@@ -141,10 +137,10 @@ export function generateFFmpegCommand(plan: EditingPlan): string {
     }
   }
   
-  // Add crossfade transitions
-  if (plan.transitions?.some(t => t.type === 'xfade')) {
+  // Apply crossfade transitions
+  if (plan.transitions && plan.transitions.some(t => t.type === 'xfade')) {
     const xfadeTransitions = plan.transitions.filter(t => t.type === 'xfade');
-    xfadeTransitions.forEach((transition, index) => {
+    xfadeTransitions.forEach((transition) => {
       filters.push(`xfade=transition=fade:duration=${transition.duration}:offset=${transition.timestamp}`);
     });
   }
@@ -152,15 +148,8 @@ export function generateFFmpegCommand(plan: EditingPlan): string {
   // Add captions
   if (plan.captions && plan.captions.length > 0) {
     plan.captions.forEach((caption) => {
-      const position = caption.position || 'bottom';
-      let yPos = 'h*0.9';
-      if (position === 'top') yPos = 'h*0.1';
-      if (position === 'center') yPos = 'h/2';
-      
-      const escapedText = caption.text.replace(/'/g, "\\'").replace(/:/g, '\\:');
-      filters.push(
-        `drawtext=text='${escapedText}':fontsize=${caption.fontSize || 24}:fontcolor=${caption.fontColor || 'white'}:box=1:boxcolor=black@0.7:x=(w-text_w)/2:y=${yPos}:enable='between(t,${caption.startTime},${caption.endTime})'`
-      );
+      const { filter } = planCaptionsMap(caption);
+      filters.push(filter);
     });
   }
   
@@ -182,6 +171,9 @@ export function generateFFmpegCommand(plan: EditingPlan): string {
   return command;
 }
 
+/**
+ * Execute FFmpeg command with progress tracking
+ */
 export async function executeFFmpegCommand(
   plan: EditingPlan,
   onProgress?: (progress: FFmpegProgress) => void
@@ -211,25 +203,8 @@ export async function executeFFmpegCommand(
     // Apply captions
     if (plan.captions && plan.captions.length > 0) {
       plan.captions.forEach((caption) => {
-        const position = caption.position || 'bottom';
-        let yPos = 'h*0.9';
-        if (position === 'top') yPos = 'h*0.1';
-        if (position === 'center') yPos = 'h/2';
-        
-        const escapedText = caption.text.replace(/'/g, "\\'").replace(/:/g, '\\:');
-        command.videoFilters({
-          filter: 'drawtext',
-          options: {
-            text: escapedText,
-            fontsize: caption.fontSize || 24,
-            fontcolor: caption.fontColor || 'white',
-            box: 1,
-            boxcolor: 'black@0.7',
-            x: '(w-text_w)/2',
-            y: yPos,
-            enable: `between(t,${caption.startTime},${caption.endTime})`
-          }
-        });
+        const { filter } = planCaptionsMap(caption);
+        command.videoFilters(filter);
       });
     }
     
@@ -256,7 +231,10 @@ export async function executeFFmpegCommand(
         }
       })
       .on('end', () => {
-        resolve({ success: true, outputPath: plan.outputPath, duration: plan.cuts?.reduce((acc, c) => acc + (c.endTime - c.startTime), 0) || 0 });
+        const totalDuration = plan.cuts 
+          ? plan.cuts.reduce((acc, c) => acc + (c.endTime - c.startTime), 0) 
+          : 0;
+        resolve({ success: true, outputPath: plan.outputPath, duration: totalDuration });
       })
       .on('error', (err: any) => reject(err))
       .save(plan.outputPath);

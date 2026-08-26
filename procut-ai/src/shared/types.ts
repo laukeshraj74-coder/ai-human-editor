@@ -29,6 +29,9 @@ export interface Caption {
   startTime: number;
   endTime: number;
   speaker?: string;
+  fontSize?: number;
+  fontColor?: string;
+  position?: 'bottom' | 'top' | 'center';
 }
 
 export interface EditingPlan {
@@ -39,6 +42,8 @@ export interface EditingPlan {
   captions: Caption[];
   backgroundMusic?: string;
   sfx?: SoundEffect[];
+  zoomPoints?: ZoomPoint[];
+  transitions?: Transition[];
 }
 
 export interface CutPoint {
@@ -46,6 +51,20 @@ export interface CutPoint {
   endTime: number;
   keep: boolean;
   reason?: string;
+}
+
+export interface ZoomPoint {
+  timestamp: number;
+  duration: number;
+  zoomLevel: number;
+  x?: number;
+  y?: number;
+}
+
+export interface Transition {
+  type: 'xfade' | 'fade';
+  timestamp: number;
+  duration: number;
 }
 
 export interface SoundEffect {
@@ -69,4 +88,34 @@ export interface ChatMessage {
     path?: string;
     name?: string;
   }[];
+}
+
+export interface VideoInfo {
+  duration: number;
+  width: number;
+  height: number;
+  fps: number;
+  codec: string;
+  hasAudio: boolean;
+}
+
+export interface FFmpegProgress {
+  percent: number;
+  currentFps: number;
+  currentKbps: number;
+  targetSize: number;
+  timemark: string;
+  eta?: number;
+}
+
+export interface VerificationResult {
+  success: boolean;
+  checks: {
+    resolution: boolean;
+    audioSync: boolean;
+    duration: boolean;
+    codec: boolean;
+  };
+  errors: string[];
+  outputInfo?: VideoInfo;
 }

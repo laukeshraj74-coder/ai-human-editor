@@ -2,21 +2,23 @@ import express, { Request, Response } from 'express';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
-import { getVideoInfo, EditingPlan, generateFFmpegCommand, executeFFmpegCommand } from './ffmpeg';
+import { EditingPlan, FFmpegProgress, VideoInfo, VerificationResult } from '../shared/types';
+import { getVideoInfo, executeFFmpegCommand, generateFFmpegCommand } from './ffmpeg';
 import { OmniRouteClient } from './omniRoute';
+import { VideoVerifier } from './verification';
 
 const router = express.Router();
 
 // Configure multer for file uploads
 const storage = multer.diskStorage({
-  destination: (req, file, cb) => {
+  destination: (_req, _file, cb) => {
     const uploadDir = path.join(__dirname, '../../uploads');
     if (!fs.existsSync(uploadDir)) {
       fs.mkdirSync(uploadDir, { recursive: true });
     }
     cb(null, uploadDir);
   },
-  filename: (req, file, cb) => {
+  filename: (_req, file, cb) => {
     const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
     cb(null, `${uniqueSuffix}-${file.originalname}`);
   },
@@ -27,7 +29,7 @@ const upload = multer({
   limits: {
     fileSize: 500 * 1024 * 1024, // 500MB limit
   },
-  fileFilter: (req, file, cb) => {
+  fileFilter: (_req, file, cb) => {
     const allowedTypes = /mp4|mov|avi|mkv|webm/;
     const extname = allowedTypes.test(path.extname(file.originalname).toLowerCase());
     const mimetype = allowedTypes.test(file.mimetype);
@@ -39,6 +41,10 @@ const upload = multer({
     }
   },
 });
+
+// Store progress for polling
+const progressStore = new Map<string, FFmpegProgress & { status: string }>();
+const verificationStore = new Map<string, VerificationResult>();
 
 /**
  * POST /api/upload
@@ -71,7 +77,7 @@ router.post('/upload', upload.single('video'), async (req: Request, res: Respons
 
 /**
  * POST /api/analyze
- * Analyze video using OmniRoute AI
+ * Analyze video using OmniRoute AI and generate Director Plan
  */
 router.post('/analyze', async (req: Request, res: Response) => {
   try {
@@ -120,7 +126,7 @@ router.post('/analyze', async (req: Request, res: Response) => {
     // Generate captions
     const captions = await omniClient.generateCaptions(videoPath);
 
-    // Compile analysis results
+    // Compile analysis results into Director Plan
     const analysis = {
       chunks,
       overallSummary: 'AI-generated video analysis',
@@ -150,7 +156,7 @@ router.post('/analyze', async (req: Request, res: Response) => {
 
 /**
  * POST /api/edit
- * Execute video editing based on analysis
+ * Execute video editing based on Director Plan with progress tracking
  */
 router.post('/edit', async (req: Request, res: Response) => {
   try {
@@ -168,17 +174,71 @@ router.post('/edit', async (req: Request, res: Response) => {
       plan.outputPath = `${base}_edited${ext}`;
     }
 
-    // Execute FFmpeg command
-    const result = await executeFFmpegCommand(plan, (progress) => {
-      // In production, emit progress via WebSocket or Server-Sent Events
-      console.log('FFmpeg progress:', progress);
+    const jobId = `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    
+    // Initialize progress tracking
+    progressStore.set(jobId, {
+      percent: 0,
+      currentFps: 0,
+      currentKbps: 0,
+      targetSize: 0,
+      timemark: '00:00:00',
+      status: 'initializing'
     });
 
+    // Initialize engine and execute plan
+    executeFFmpegCommand(plan, (progress) => {
+      progressStore.set(jobId, {
+        ...progress,
+        status: 'processing'
+      });
+    })
+      .then(async (result) => {
+        // Verify output
+        const verifier = new VideoVerifier();
+        const inputInfo = await getVideoInfo(plan.inputPath);
+        const verification = await verifier.verify(plan.outputPath, inputInfo);
+        
+        verificationStore.set(jobId, verification);
+        progressStore.set(jobId, {
+          percent: 100,
+          currentFps: 0,
+          currentKbps: 0,
+          targetSize: 0,
+          timemark: 'complete',
+          status: 'complete'
+        });
+
+        res.json({
+          jobId,
+          outputPath: plan.outputPath,
+          ffmpegCommand: generateFFmpegCommand(plan),
+          verification,
+          ...result,
+        });
+      })
+      .catch((error) => {
+        console.error('Edit error:', error);
+        progressStore.set(jobId, {
+          percent: 0,
+          currentFps: 0,
+          currentKbps: 0,
+          targetSize: 0,
+          timemark: 'error',
+          status: 'error'
+        });
+        
+        res.status(500).json({ 
+          error: 'Failed to edit video',
+          message: error instanceof Error ? error.message : 'Unknown error'
+        });
+      });
+
+    // Return job ID immediately for polling
     res.json({
-      success: true,
-      outputPath: plan.outputPath,
-      ffmpegCommand: generateFFmpegCommand(plan),
-      ...result,
+      jobId,
+      status: 'processing',
+      message: 'Video editing started',
     });
   } catch (error) {
     console.error('Edit error:', error);
@@ -187,6 +247,27 @@ router.post('/edit', async (req: Request, res: Response) => {
       message: error instanceof Error ? error.message : 'Unknown error'
     });
   }
+});
+
+/**
+ * GET /api/progress/:jobId
+ * Poll for editing progress
+ */
+router.get('/progress/:jobId', (req: Request, res: Response) => {
+  const { jobId } = req.params;
+  const progress = progressStore.get(jobId);
+  const verification = verificationStore.get(jobId);
+
+  if (!progress) {
+    res.status(404).json({ error: 'Job not found' });
+    return;
+  }
+
+  res.json({
+    jobId,
+    progress,
+    verification,
+  });
 });
 
 /**
@@ -206,6 +287,37 @@ router.get('/video-info/:videoPath', async (req: Request, res: Response) => {
     console.error('Video info error:', error);
     res.status(500).json({ 
       error: 'Failed to get video info',
+      message: error instanceof Error ? error.message : 'Unknown error'
+    });
+  }
+});
+
+/**
+ * GET /api/verify/:outputPath
+ * Verify edited video quality
+ */
+router.get('/verify/:outputPath', async (req: Request, res: Response) => {
+  try {
+    const outputPath = decodeURIComponent(req.params.outputPath);
+    const inputPath = req.query.inputPath as string | undefined;
+    
+    const verifier = new VideoVerifier();
+    let inputInfo: VideoInfo | undefined;
+    
+    if (inputPath) {
+      inputInfo = await getVideoInfo(inputPath);
+    }
+    
+    const verification = await verifier.verify(outputPath, inputInfo);
+    
+    res.json({
+      success: true,
+      verification,
+    });
+  } catch (error) {
+    console.error('Verification error:', error);
+    res.status(500).json({ 
+      error: 'Failed to verify video',
       message: error instanceof Error ? error.message : 'Unknown error'
     });
   }
