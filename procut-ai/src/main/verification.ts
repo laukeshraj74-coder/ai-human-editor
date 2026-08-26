@@ -2,214 +2,226 @@ import ffmpeg from 'fluent-ffmpeg';
 import path from 'path';
 import fs from 'fs';
 import { VerificationResult, VideoInfo } from '../shared/types';
-import { getVideoInfo } from './ffmpeg';
-
-/**
- * Video Verification Module
- * Performs quality checks on the final output video
- */
-
-export interface VerificationOptions {
-  expectedMinDuration?: number;
-  expectedMaxDuration?: number;
-  expectedWidth?: number;
-  expectedHeight?: number;
-  requireAudio?: boolean;
-}
 
 export class VideoVerifier {
-  private options: VerificationOptions;
-
-  constructor(options: VerificationOptions = {}) {
-    this.options = {
-      expectedMinDuration: options.expectedMinDuration || 1, // 1 second minimum
-      expectedMaxDuration: options.expectedMaxDuration || 3600, // 1 hour maximum
-      expectedWidth: options.expectedWidth,
-      expectedHeight: options.expectedHeight,
-      requireAudio: options.requireAudio ?? true,
-    };
-  }
-
   /**
-   * Verify the output video meets quality standards
+   * Verify the final output video
    */
-  async verify(outputPath: string, inputInfo?: VideoInfo): Promise<VerificationResult> {
-    const errors: string[] = [];
-    const checks = {
-      resolution: true,
-      audioSync: true,
-      duration: true,
-      codec: true,
+  async verify(outputPath: string, expectedDuration?: number): Promise<VerificationResult> {
+    const result: VerificationResult = {
+      success: true,
+      checks: {
+        resolution: false,
+        audioSync: false,
+        duration: false,
+        codec: false,
+      },
+      errors: [],
     };
-
-    let outputInfo: VideoInfo | undefined;
 
     try {
       // Check if file exists
       if (!fs.existsSync(outputPath)) {
-        return {
-          success: false,
-          checks,
-          errors: ['Output file does not exist'],
-        };
+        result.success = false;
+        result.errors.push('Output file does not exist');
+        return result;
       }
 
-      // Get video information
-      outputInfo = await getVideoInfo(outputPath);
+      // Get video info
+      const videoInfo = await this.getVideoInfo(outputPath);
+      result.outputInfo = videoInfo;
 
-      // Duration check
-      if (outputInfo && outputInfo.duration < this.options.expectedMinDuration!) {
-        checks.duration = false;
-        errors.push(`Video duration (${outputInfo.duration}s) is below minimum (${this.options.expectedMinDuration}s)`);
+      // Check resolution (must be valid)
+      if (videoInfo.width > 0 && videoInfo.height > 0) {
+        result.checks.resolution = true;
+      } else {
+        result.success = false;
+        result.errors.push('Invalid resolution');
       }
 
-      if (outputInfo && outputInfo.duration > this.options.expectedMaxDuration!) {
-        checks.duration = false;
-        errors.push(`Video duration (${outputInfo.duration}s) exceeds maximum (${this.options.expectedMaxDuration}s)`);
+      // Check codec (must be h264)
+      if (videoInfo.codec === 'h264' || videoInfo.codec === 'libx264') {
+        result.checks.codec = true;
+      } else {
+        result.success = false;
+        result.errors.push(`Unexpected codec: ${videoInfo.codec}`);
       }
 
-      // Resolution check
-      if (this.options.expectedWidth && outputInfo && outputInfo.width !== this.options.expectedWidth) {
-        checks.resolution = false;
-        errors.push(`Video width (${outputInfo.width}) does not match expected (${this.options.expectedWidth})`);
-      }
-
-      if (this.options.expectedHeight && outputInfo && outputInfo.height !== this.options.expectedHeight) {
-        checks.resolution = false;
-        errors.push(`Video height (${outputInfo.height}) does not match expected (${this.options.expectedHeight})`);
-      }
-
-      // Audio check
-      if (this.options.requireAudio && outputInfo && !outputInfo.hasAudio) {
-        checks.audioSync = false;
-        errors.push('Output video has no audio track');
-      }
-
-      // Codec check
-      if (outputInfo && (outputInfo.codec === 'unknown' || outputInfo.codec === '')) {
-        checks.codec = false;
-        errors.push('Unknown video codec detected');
-      }
-
-      // Audio sync check (compare with input if provided)
-      if (inputInfo && outputInfo) {
-        const durationDiff = Math.abs(inputInfo.duration - outputInfo.duration);
-        // Allow 2 seconds tolerance for audio sync
-        if (durationDiff > 2) {
-          checks.audioSync = false;
-          errors.push(`Possible audio sync issue: duration difference of ${durationDiff.toFixed(2)}s`);
+      // Check duration
+      if (videoInfo.duration > 0) {
+        result.checks.duration = true;
+        
+        // If expected duration provided, check if it's within 5% tolerance
+        if (expectedDuration) {
+          const tolerance = expectedDuration * 0.05;
+          if (Math.abs(videoInfo.duration - expectedDuration) > tolerance) {
+            result.success = false;
+            result.errors.push(
+              `Duration mismatch: expected ${expectedDuration}s, got ${videoInfo.duration}s`
+            );
+          }
         }
+      } else {
+        result.success = false;
+        result.errors.push('Invalid duration');
       }
 
-      // Additional FFprobe-based checks
-      const syncCheck = await this.checkAudioVideoSync(outputPath);
-      if (!syncCheck) {
-        checks.audioSync = false;
-        errors.push('Audio/video streams may be out of sync');
+      // Check audio sync (audio and video should have similar duration)
+      result.checks.audioSync = await this.checkAudioSync(outputPath);
+      if (!result.checks.audioSync) {
+        result.success = false;
+        result.errors.push('Audio sync issue detected');
+      }
+
+      // Additional integrity checks
+      const integrityCheck = await this.checkFileIntegrity(outputPath);
+      if (!integrityCheck) {
+        result.success = false;
+        result.errors.push('File integrity check failed');
       }
 
     } catch (error: any) {
-      errors.push(`Verification failed: ${error.message}`);
-      return {
-        success: false,
-        checks,
-        errors,
-      };
+      result.success = false;
+      result.errors.push(`Verification error: ${error.message}`);
     }
 
-    const success = errors.length === 0;
-
-    return {
-      success,
-      checks,
-      errors,
-      outputInfo,
-    };
+    return result;
   }
 
   /**
-   * Check audio/video synchronization using ffprobe
+   * Get video information
    */
-  private async checkAudioVideoSync(videoPath: string): Promise<boolean> {
+  private async getVideoInfo(inputPath: string): Promise<VideoInfo> {
+    return new Promise((resolve, reject) => {
+      ffmpeg.ffprobe(inputPath, (err, metadata) => {
+        if (err) {
+          reject(err);
+          return;
+        }
+
+        const videoStream = metadata.streams.find(s => s.codec_type === 'video');
+        const audioStream = metadata.streams.find(s => s.codec_type === 'audio');
+
+        if (!videoStream) {
+          reject(new Error('No video stream found'));
+          return;
+        }
+
+        resolve({
+          duration: metadata.format.duration || 0,
+          width: videoStream.width || 0,
+          height: videoStream.height || 0,
+          fps: Number(videoStream.r_frame_rate?.split('/')[0] || 30) / 
+               Number(videoStream.r_frame_rate?.split('/')[1] || 1),
+          codec: videoStream.codec_name || 'unknown',
+          hasAudio: !!audioStream,
+        });
+      });
+    });
+  }
+
+  /**
+   * Check audio sync by comparing audio and video durations
+   */
+  private async checkAudioSync(inputPath: string): Promise<boolean> {
     return new Promise((resolve) => {
-      ffmpeg.ffprobe(videoPath, (err: any, metadata: any) => {
+      ffmpeg.ffprobe(inputPath, (err, metadata) => {
         if (err) {
           resolve(false);
           return;
         }
 
-        const videoStream = metadata.streams.find((s: any) => s.codec_type === 'video');
-        const audioStream = metadata.streams.find((s: any) => s.codec_type === 'audio');
+        const videoStream = metadata.streams.find(s => s.codec_type === 'video');
+        const audioStream = metadata.streams.find(s => s.codec_type === 'audio');
 
         if (!videoStream) {
           resolve(false);
           return;
         }
 
+        // If no audio, consider it synced (silent video)
         if (!audioStream) {
-          // No audio stream, skip sync check
           resolve(true);
           return;
         }
 
-        // Check if both streams have similar start times
-        const videoStartTime = videoStream.start_time || 0;
-        const audioStartTime = audioStream.start_time || 0;
-        
-        const timeDiff = Math.abs(parseFloat(videoStartTime) - parseFloat(audioStartTime));
-        
-        // Allow up to 100ms difference
-        resolve(timeDiff < 0.1);
+        const videoDuration = videoStream.duration || metadata.format.duration || 0;
+        const audioDuration = audioStream.duration || metadata.format.duration || 0;
+
+        // Allow 0.5 second tolerance
+        const diff = Math.abs(videoDuration - audioDuration);
+        resolve(diff < 0.5);
       });
     });
   }
 
   /**
-   * Quick validation without detailed checks
+   * Check file integrity by attempting to read frames
    */
-  async quickValidate(outputPath: string): Promise<boolean> {
-    try {
-      const result = await this.verify(outputPath);
-      return result.success;
-    } catch {
-      return false;
-    }
+  private async checkFileIntegrity(inputPath: string): Promise<boolean> {
+    return new Promise((resolve) => {
+      let frameCount = 0;
+      let errorOccurred = false;
+
+      ffmpeg(inputPath)
+        .on('error', () => {
+          errorOccurred = true;
+        })
+        .on('end', () => {
+          resolve(!errorOccurred && frameCount > 0);
+        })
+        .frames()
+        .on('frame', () => {
+          frameCount++;
+          if (frameCount >= 5) {
+            // Only check first 5 frames for performance
+            (this as any)._ffmpeg?.kill();
+          }
+        })
+        .save('/dev/null');
+
+      // Timeout after 5 seconds
+      setTimeout(() => {
+        resolve(!errorOccurred && frameCount > 0);
+      }, 5000);
+    });
   }
 
   /**
-   * Get detailed verification report as string
+   * Generate a verification report
    */
-  async getReport(outputPath: string, inputInfo?: VideoInfo): Promise<string> {
-    const result = await this.verify(outputPath, inputInfo);
-    
+  generateReport(result: VerificationResult): string {
     const lines: string[] = [
       '=== Video Verification Report ===',
-      `File: ${path.basename(outputPath)}`,
-      `Status: ${result.success ? 'PASSED' : 'FAILED'}`,
+      '',
+      `Overall Status: ${result.success ? '✅ PASSED' : '❌ FAILED'}`,
       '',
       'Checks:',
-      `  Resolution: ${result.checks.resolution ? '✓' : '✗'}`,
-      `  Audio Sync: ${result.checks.audioSync ? '✓' : '✗'}`,
-      `  Duration: ${result.checks.duration ? '✓' : '✗'}`,
-      `  Codec: ${result.checks.codec ? '✓' : '✗'}`,
+      `  Resolution: ${result.checks.resolution ? '✅' : '❌'}`,
+      `  Audio Sync: ${result.checks.audioSync ? '✅' : '❌'}`,
+      `  Duration: ${result.checks.duration ? '✅' : '❌'}`,
+      `  Codec: ${result.checks.codec ? '✅' : '❌'}`,
+      '',
     ];
 
-    if (result.outputInfo) {
-      lines.push('', 'Output Info:');
-      lines.push(`  Duration: ${result.outputInfo.duration.toFixed(2)}s`);
-      lines.push(`  Resolution: ${result.outputInfo.width}x${result.outputInfo.height}`);
-      lines.push(`  FPS: ${result.outputInfo.fps}`);
-      lines.push(`  Codec: ${result.outputInfo.codec}`);
-      lines.push(`  Has Audio: ${result.outputInfo.hasAudio}`);
+    if (result.errors.length > 0) {
+      lines.push('Errors:');
+      result.errors.forEach(err => lines.push(`  - ${err}`));
+      lines.push('');
     }
 
-    if (result.errors.length > 0) {
-      lines.push('', 'Errors:');
-      result.errors.forEach(err => lines.push(`  - ${err}`));
+    if (result.outputInfo) {
+      lines.push('Output Info:');
+      lines.push(`  Duration: ${result.outputInfo.duration.toFixed(2)}s`);
+      lines.push(`  Resolution: ${result.outputInfo.width}x${result.outputInfo.height}`);
+      lines.push(`  FPS: ${result.outputInfo.fps.toFixed(2)}`);
+      lines.push(`  Codec: ${result.outputInfo.codec}`);
+      lines.push(`  Has Audio: ${result.outputInfo.hasAudio}`);
     }
 
     return lines.join('\n');
   }
 }
 
-export default VideoVerifier;
+// Export singleton instance
+export const videoVerifier = new VideoVerifier();

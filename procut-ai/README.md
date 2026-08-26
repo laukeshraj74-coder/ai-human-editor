@@ -1,139 +1,178 @@
-# ProCut AI - Professional Desktop AI Video Editor
+# ProCut AI - MrBeast-Style AI Video Editor
 
-## Overview
-ProCut AI is an Electron-based desktop application that leverages AI to automatically edit videos with MrBeast-level quality. It uses the OmniRoute API for intelligent video analysis and FFmpeg for professional video processing.
+A professional-grade desktop AI video editor built with Electron, React, TypeScript, and FFmpeg. Features ChatGPT-style UI, real-time WebSocket progress updates, and automated MrBeast-style editing.
 
-## Project Architecture
+## 🎬 Features
 
-### Tech Stack
-- **Frontend**: Electron + React + TypeScript + Tailwind CSS (ChatGPT-like UI)
-- **AI Backend**: OmniRoute API (Qwen3-VL for video analysis, Qwen3-Coder for editing plans)
-- **Video Processing**: FFmpeg (cutting, merging, filters, transitions, overlays)
+### Core Editing
+- **Smart Cuts**: Automatic filler/pause removal using AI analysis
+- **Dynamic Zooms**: `zoompan` filter for dramatic MrBeast-style zoom-ins
+- **9 Transition Types**: fade, slideleft, slideright, wipeleft, wiperight, circleopen, circleclose, dissolve
+- **Animated Captions**: Bold pop-up, slide, and typewriter effects with customizable styling
+- **SFX Integration**: Automatic sound effect mixing (risers, whooshes, hits) using `amix` and `adelay` filters
+- **Background Music**: Fade in/out with volume control
 
-### Folder Structure
+### Presets
+- **MrBeast**: Aggressive pacing, heavy zooms, high-tempo SFX, bold captions
+- **Documentary**: Slow pacing, subtle zooms, minimal SFX
+- **Tutorial**: Medium pacing, slide transitions, highlighted captions
+- **Vlog**: Fast pacing, dissolve transitions, bold captions
+
+### Technical
+- Real-time WebSocket progress updates
+- ChatGPT-style dark mode UI
+- Drag-and-drop video upload
+- Built-in video preview player
+- Quality verification (resolution, audio sync, duration, codec)
+
+## 📁 Project Structure
+
 ```
 procut-ai/
 ├── src/
-│   ├── main/                    # Electron main process
-│   │   ├── main.ts              # Main entry point
-│   │   ├── preload.ts           # Preload script for IPC
-│   │   └── ffmpeg.ts            # FFmpeg wrapper
-│   ├── renderer/                # React frontend
-│   │   ├── App.tsx              # Main app component
-│   │   ├── index.tsx            # React entry point
-│   │   ├── components/          # UI components
-│   │   │   ├── ChatInterface.tsx
-│   │   │   ├── VideoPreview.tsx
-│   │   │   ├── TimelineEditor.tsx
-│   │   │   ├── SettingsPanel.tsx
-│   │   │   └── ProgressBar.tsx
-│   │   ├── hooks/               # Custom React hooks
-│   │   │   ├── useVideoAnalysis.ts
-│   │   │   ├── useFFmpeg.ts
-│   │   │   └── useDarkMode.ts
-│   │   ├── services/            # API & processing services
-│   │   │   ├── omniRoute.ts     # OmniRoute API client
-│   │   │   ├── videoProcessor.ts # Video analysis & editing
-│   │   │   └── audioHandler.ts  # Audio processing
-│   │   ├── styles/              # Global styles
-│   │   │   └── index.css        # Tailwind imports
-│   │   └── types/               # TypeScript types
-│   │       └── index.ts
-│   ├── shared/                  # Shared types & utilities
-│   │   └── types.ts
-│   └── assets/                  # Static assets
-├── public/
-│   └── icon.ico
-├── package.json
-├── tsconfig.json
-├── tailwind.config.js
-├── postcss.config.js
-├── electron-builder.json
-├── vite.config.ts
-└── README.md
+│   ├── main/                      # Backend + Electron Main Process
+│   │   ├── main.ts                # Electron entry point
+│   │   ├── server.ts              # Express + WebSocket server
+│   │   ├── api.ts                 # REST API routes
+│   │   ├── engine.ts              # FFmpeg editing engine
+│   │   ├── ffmpeg.ts              # FFmpeg wrapper utilities
+│   │   ├── verification.ts        # Quality verification
+│   │   ├── presets.ts             # Edit presets (mrbeast, etc.)
+│   │   ├── websocket.ts           # WebSocket server
+│   │   └── omniRoute.ts           # OmniRoute AI client
+│   │
+│   ├── renderer/                  # React Frontend
+│   │   ├── App.tsx                # Main React component
+│   │   ├── components/            # UI components
+│   │   │   ├── ChatInterface.tsx  # ChatGPT-style chat
+│   │   │   ├── VideoPreview.tsx   # Video player
+│   │   │   ├── ProgressBar.tsx    # FFmpeg progress
+│   │   │   ├── FileUpload.tsx     # Drag-drop upload
+│   │   │   └── TimelineEditor.tsx # Visual timeline
+│   │   ├── services/              # API + WebSocket clients
+│   │   └── hooks/                 # Custom React hooks
+│   │
+│   └── shared/types.ts            # TypeScript interfaces
+│
+├── assets/sfx/                    # Sound effects library
+├── uploads/                       # Input videos
+├── output/                        # Edited videos
+└── package.json
 ```
 
-## Implementation Phases
-
-### Phase 1: Core Setup & Basic Video Operations
-1. Initialize Electron + React + TypeScript project
-2. Configure Tailwind CSS with dark mode
-3. Set up FFmpeg integration
-4. Implement basic video cutting/trimming functionality
-5. Create ChatGPT-like UI components
-
-### Phase 2: Advanced Filters & Effects
-1. Add zoompan filter for dynamic zoom-ins
-2. Implement xfade transitions
-3. Add overlay support for graphics/text
-4. Create audio mixing capabilities
-5. Build timeline editor component
-
-### Phase 3: AI Integration (OmniRoute)
-1. Integrate OmniRoute API client
-2. Implement video chunking and analysis with Qwen3-VL
-3. Generate editing scripts using Qwen3-Coder
-4. Auto-detect filler moments and dead air
-5. Smart caption generation via Speech-to-Text
-
-### Phase 4: Full Pipeline & Polish
-1. Complete end-to-end workflow (upload → analyze → edit → export)
-2. Add quality verification checks
-3. Implement progress tracking
-4. Add settings panel for API keys and preferences
-5. Build Windows .exe with electron-builder
-
-## Key Features
-
-### Smart Cuts
-- Automatically detects pauses, slow sections, and filler content
-- Ensures new hooks appear every 1-3 minutes
-- Uses AI to identify engaging vs boring segments
-
-### Dynamic Pacing
-- Smooth zoom-ins using FFmpeg zoompan filter
-- Cinematic crossfade transitions
-- Automatic pacing adjustments based on content type
-
-### Audio & SFX
-- Background music auto-mixing
-- Sound effect placement (risers, whooshes) at key moments
-- Audio level normalization
-
-### Captions & Graphics
-- Speech-to-Text subtitle generation
-- Animated caption burning
-- Customizable text styles and positions
-
-## Getting Started
+## 🚀 Installation & Running
 
 ### Prerequisites
-- Node.js 18+
-- FFmpeg installed on system
-- OmniRoute API key (free tier available)
+1. **Node.js** v18+ installed
+2. **FFmpeg** installed on your system
 
-### Installation
+#### Install FFmpeg on Windows:
+```powershell
+# Using Chocolatey
+choco install ffmpeg
+
+# OR download from https://gyan.dev/ffmpeg-builds/
+# Add to PATH manually
+```
+
+### Setup
+
 ```bash
+cd procut-ai
+
+# Install dependencies
 npm install
+
+# Optional: Set OmniRoute API key for AI features
+echo OMNIROUTE_API_KEY=your_api_key > .env
 ```
 
-### Development
+### Development Mode
+
+**Terminal 1 - Start Backend Server:**
 ```bash
-npm run dev
+npm run server:dev
+```
+Server runs at: http://localhost:3001
+WebSocket at: ws://localhost:3001/ws/progress
+
+**Terminal 2 - Start Electron App:**
+```bash
+npm run electron:dev
 ```
 
-### Build Windows Executable
+### Build Windows .exe
+
 ```bash
 npm run build:win
 ```
 
-## Usage Workflow
-1. Launch ProCut AI
-2. Drag and drop or select a video file
-3. AI analyzes the video and generates an editing plan
-4. Review/edit the plan in the chat interface
-5. Execute the edit and preview results
-6. Export the final video
+The installer will be created at: `release/ProCut AI Setup.exe`
 
-## License
-MIT
+## 📡 WebSocket Protocol
+
+### Subscribe to Job Progress
+```json
+{ "type": "subscribe", "jobId": "job_1234567890" }
+```
+
+### Server Messages
+```json
+// Progress Update
+{ "type": "progress", "jobId": "...", "progress": { "percent": 45, "currentFps": 30, "timemark": "00:01:23" } }
+
+// Complete
+{ "type": "complete", "jobId": "...", "outputPath": "/path/to/video.mp4" }
+
+// Error
+{ "type": "error", "jobId": "...", "error": "message" }
+```
+
+## 🔌 API Endpoints
+
+| Endpoint | Method | Description |
+|----------|--------|-------------|
+| `/api/upload` | POST | Upload video file |
+| `/api/analyze` | POST | Analyze video with AI |
+| `/api/edit` | POST | Execute editing plan |
+| `/api/progress/:jobId` | GET | Poll job progress (fallback) |
+| `/api/video-info/:path` | GET | Get video metadata |
+| `/api/verify/:path` | GET | Verify output quality |
+| `/api/presets` | GET | List available presets |
+
+## 🎯 Usage Flow
+
+1. **Upload Video**: Click paperclip icon or drag video file
+2. **AI Analysis**: System analyzes content and suggests cuts
+3. **Review Plan**: Check suggested edits in timeline
+4. **Select Preset**: Choose MrBeast, Documentary, Tutorial, or Vlog
+5. **Export**: Click "Export Video" to render
+6. **Monitor Progress**: Watch real-time progress via WebSocket
+7. **Download**: Get your professionally edited video!
+
+## 🎵 SFX Library
+
+Place your SFX files in `assets/sfx/`:
+- `riser.mp3` - Buildup tension
+- `whoosh.mp3` - Transition swoosh
+- `hit.mp3` - Impact sound
+- `boom.mp3` - Explosion
+- `laugh.mp3` - Comedy laugh track
+- `transition.mp3` - General transition
+
+Free SFX sources:
+- Freesound.org
+- ZapSplat.com
+- Mixkit.co
+
+## 🛠️ Tech Stack
+
+- **Frontend**: Electron + React + TypeScript + Tailwind CSS
+- **Backend**: Express.js + WebSocket (ws)
+- **Video Processing**: fluent-ffmpeg
+- **AI**: OmniRoute API (Qwen3-VL, Qwen3-Coder)
+- **Build**: electron-builder
+
+## 📝 License
+
+MIT License - See LICENSE file for details.

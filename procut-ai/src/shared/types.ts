@@ -31,7 +31,18 @@ export interface Caption {
   speaker?: string;
   fontSize?: number;
   fontColor?: string;
+  backgroundColor?: string;
   position?: 'bottom' | 'top' | 'center';
+  style?: 'normal' | 'bold' | 'highlight';
+  animation?: 'pop' | 'slide' | 'typewriter';
+}
+
+export interface SFXEvent {
+  type: 'riser' | 'whoosh' | 'hit' | 'boom' | 'laugh' | 'transition';
+  startTime: number;
+  duration?: number;
+  volume?: number; // 0.0 to 1.0
+  filePath?: string;
 }
 
 export interface EditingPlan {
@@ -40,10 +51,28 @@ export interface EditingPlan {
   cuts: CutPoint[];
   effects: string[];
   captions: Caption[];
-  backgroundMusic?: string;
-  sfx?: SoundEffect[];
+  backgroundMusic?: {
+    enabled: boolean;
+    filePath?: string;
+    volume: number;
+    fadeDuration: number;
+  };
+  sfx?: SFXEvent[];
   zoomPoints?: ZoomPoint[];
   transitions?: Transition[];
+  preset?: EditPreset;
+}
+
+export type EditPreset = 'mrbeast' | 'documentary' | 'tutorial' | 'vlog';
+
+export interface PresetConfig {
+  name: EditPreset;
+  cutThreshold: number; // Max seconds of silence before cut
+  zoomIntensity: number; // 1.0 to 2.0
+  transitionType: Transition['type'];
+  captionStyle: Caption['style'];
+  sfxDensity: 'low' | 'medium' | 'high';
+  pacing: 'slow' | 'medium' | 'fast' | 'aggressive';
 }
 
 export interface CutPoint {
@@ -62,15 +91,10 @@ export interface ZoomPoint {
 }
 
 export interface Transition {
-  type: 'xfade' | 'fade';
+  type: 'xfade' | 'fade' | 'slideleft' | 'slideright' | 'wipeleft' | 'wiperight' | 'circleopen' | 'circleclose' | 'dissolve';
   timestamp: number;
   duration: number;
-}
-
-export interface SoundEffect {
-  type: 'riser' | 'whoosh' | 'hit' | 'transition';
-  timestamp: number;
-  duration: number;
+  offset?: number;
 }
 
 export interface OmniRouteConfig {
