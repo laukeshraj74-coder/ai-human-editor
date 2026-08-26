@@ -2,7 +2,7 @@ import express, { Request, Response } from 'express';
 import multer from 'multer';
 import path from 'path';
 import fs from 'fs';
-import { EditingPlan, FFmpegProgress, VideoInfo, VerificationResult } from '../shared/types';
+import { EditingPlan, VideoInfo } from '../shared/types';
 import { ffmpegEngine } from './engine';
 import { videoVerifier } from './verification';
 import { OmniRouteClient } from './omniRoute';
@@ -133,6 +133,7 @@ router.post('/analyze', async (req: Request, res: Response) => {
         keep: false,
         reason: moment.type,
       })),
+      effects: [],
       zoomPoints: [],
       transitions: [],
       captions,

@@ -9,7 +9,7 @@ import {
   FFmpegProgress, 
   VideoInfo,
   EditingPlan,
-  SoundEffect
+  SFXEvent,
 } from '../shared/types';
 
 /**
@@ -112,20 +112,20 @@ function generateXfadeFilter(transitions: Transition[]): string {
 /**
  * Generate audio filter for background music mixing
  */
-function generateAudioFilter(backgroundMusic?: string, sfx?: SoundEffect[]): string {
+function generateAudioFilter(backgroundMusic?: { enabled: boolean; filePath?: string; volume: number; fadeDuration: number }, sfx?: SFXEvent[]): string {
   const filters: string[] = [];
   
-  if (backgroundMusic) {
+  if (backgroundMusic && backgroundMusic.enabled && backgroundMusic.filePath) {
     // Reduce background music volume and mix with original audio
-    filters.push('[1:a]volume=0.3[a1]');
+    filters.push(`[1:a]volume=${backgroundMusic.volume}[a1]`);
     filters.push('[0:a][a1]amix=inputs=2:duration=first');
   }
   
   // Add SFX at specific timestamps (simplified)
   if (sfx && sfx.length > 0) {
-    sfx.forEach((effect, idx) => {
+    sfx.forEach((effect, _idx) => {
       // In production, you'd load SFX files and mix them at specific timestamps
-      console.log(`Adding ${effect.type} SFX at ${effect.timestamp}s`);
+      console.log(`Adding ${effect.type} SFX at ${effect.startTime}s`);
     });
   }
   

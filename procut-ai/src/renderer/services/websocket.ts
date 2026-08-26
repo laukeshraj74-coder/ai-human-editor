@@ -1,4 +1,4 @@
-import { FFmpegProgress } from '../shared/types';
+import { FFmpegProgress } from '../../shared/types';
 
 export type WSMessageType = 'connected' | 'progress' | 'complete' | 'error';
 
