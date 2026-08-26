@@ -1,5 +1,4 @@
 import ffmpeg from 'fluent-ffmpeg';
-import path from 'path';
 import fs from 'fs';
 import { VerificationResult, VideoInfo } from '../shared/types';
 
@@ -163,27 +162,21 @@ export class VideoVerifier {
       let frameCount = 0;
       let errorOccurred = false;
 
-      ffmpeg(inputPath)
+      const proc = ffmpeg(inputPath)
         .on('error', () => {
           errorOccurred = true;
         })
         .on('end', () => {
           resolve(!errorOccurred && frameCount > 0);
         })
-        .frames()
+        .frames(5)
         .on('frame', () => {
           frameCount++;
           if (frameCount >= 5) {
-            // Only check first 5 frames for performance
-            (this as any)._ffmpeg?.kill();
+            proc.kill();
           }
         })
         .save('/dev/null');
-
-      // Timeout after 5 seconds
-      setTimeout(() => {
-        resolve(!errorOccurred && frameCount > 0);
-      }, 5000);
     });
   }
 

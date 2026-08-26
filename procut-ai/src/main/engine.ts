@@ -12,7 +12,7 @@ import {
   VideoInfo,
   Caption,
 } from '../shared/types';
-import { getPreset, applyPresetToPlan, PRESETS } from './presets';
+import { applyPresetToPlan } from './presets';
 
 // SFX file paths (relative to project root)
 const SFX_LIBRARY: Record<string, string> = {
@@ -253,7 +253,7 @@ export class FFmpegEngine extends EventEmitter {
         const ffmpegProgress: FFmpegProgress = {
           percent: progress.percent || 0, currentFps: progress.currentFps || 0,
           currentKbps: progress.currentKbps || 0, targetSize: progress.targetSize || 0,
-          timemark: progress.timemark || '00:00:00', eta: progress.eta,
+          timemark: progress.timemark || '00:00:00',
         };
         this.emit('progress', { jobId, progress: ffmpegProgress });
       })
@@ -267,13 +267,13 @@ export class FFmpegEngine extends EventEmitter {
 
   getJobStatus(jobId: string): FFmpegJob | undefined { return this.jobs.get(jobId); }
 
-  cancelJob(jobId: string): boolean {
-    const job = this.jobs.get(jobId);
+  cancelJob(_jobId: string): boolean {
+    const job = this.jobs.get(_jobId);
     if (job && job.status === 'running') {
       job.command.kill('SIGTERM');
       job.status = 'failed';
       job.error = 'Cancelled by user';
-      this.emit('cancelled', { jobId });
+      this.emit('cancelled', { jobId: _jobId });
       return true;
     }
     return false;

@@ -90,7 +90,6 @@ export function applyPresetToPlan(plan: any, preset: EditPreset): any {
  */
 function generateSFXForPreset(plan: any, density: 'low' | 'medium' | 'high'): any[] {
   const sfx: any[] = [];
-  const duration = plan.duration || 60; // Default 60 seconds
   
   // Add risers before zoom points
   if (plan.zoomPoints) {
