@@ -151,18 +151,18 @@ Video Metadata:
       const confidence = parseFloat(parsedData.confidence) || 0.5;
       const reasoning = parsedData.reasoning || 'AI classification based on content analysis';
 
-      // Map category to preset
+      // Map category to preset - MrBeast is default for high-energy content
       const presetMap: Record<VideoCategory, EditingPreset> = {
-        vlog: 'mrbeast',
+        vlog: 'mrbeast',        // Vlogs benefit from aggressive MrBeast-style editing
         tutorial: 'tutorial',
         documentary: 'documentary',
-        gaming: 'mrbeast',
-        product_ad: 'mrbeast',
+        gaming: 'mrbeast',       // Gaming content uses high-energy MrBeast style
+        product_ad: 'mrbeast',   // Ads need high-energy, fast-paced editing
         interview: 'documentary',
-        other: 'vlog'
+        other: 'mrbeast'         // Default to MrBeast for maximum engagement
       };
 
-      const recommendedPreset = presetMap[category] || 'vlog';
+      const recommendedPreset = presetMap[category] || 'mrbeast';
 
       // Build analysis summary
       const analysis = `${reasoning}. Recommended editing style: ${recommendedPreset} preset with ${parsedData.editingRecommendations?.pacing || 'medium'} pacing.`;
@@ -194,7 +194,7 @@ Video Metadata:
     // Simple heuristics based on metadata
     const aspectRatio = metadata.width / metadata.height;
     
-    // Vertical video likely vlog/mobile content
+    // Vertical video likely vlog/mobile content -> will use MrBeast preset
     if (aspectRatio < 1) {
       return 'vlog';
     }
@@ -204,30 +204,34 @@ Video Metadata:
       return 'documentary';
     }
     
-    // Short videos often vlogs or ads
-    if (metadata.duration < 60) {
+    // Short videos often vlogs or ads -> MrBeast style
+    if (metadata.duration < 180) {
       return 'product_ad';
     }
     
-    // Default to vlog
+    // Default to vlog (will map to MrBeast preset)
     return 'vlog';
   }
 
   /**
    * Get fallback preset based on duration
+   * MrBeast preset is the default for maximum engagement
    */
   private getFallbackPreset(metadata: VideoMetadata): EditingPreset {
     if (metadata.duration < 60) {
-      return 'mrbeast'; // Short = high energy
+      return 'mrbeast'; // Short = high energy MrBeast style
     } else if (metadata.duration < 300) {
-      return 'vlog'; // Medium = balanced
+      return 'mrbeast'; // Medium = still use MrBeast for engagement
+    } else if (metadata.duration > 600) {
+      return 'documentary'; // Long-form = smooth documentary pacing
     } else {
-      return 'documentary'; // Long = smooth pacing
+      return 'mrbeast'; // Default to MrBeast for maximum engagement
     }
   }
 
   /**
    * Mock AI analysis for development (replace with actual API call in production)
+   * Defaults to MrBeast-style high-energy editing for most content types
    */
   private async mockAnalyzeVideoContent(params: {
     prompt: string;
@@ -241,7 +245,7 @@ Video Metadata:
     let category: VideoCategory = 'vlog';
     let confidence = 0.7;
     
-    // Vertical video = vlog/mobile content
+    // Vertical video = vlog/mobile content -> MrBeast preset
     if (aspectRatio < 1) {
       category = 'vlog';
       confidence = 0.85;
@@ -251,8 +255,8 @@ Video Metadata:
       category = 'documentary';
       confidence = 0.75;
     }
-    // Short videos = product_ad or mrbeast style
-    else if (metadata.duration < 60) {
+    // Short to medium videos = product_ad or vlog -> MrBeast style
+    else if (metadata.duration < 300) {
       category = 'product_ad';
       confidence = 0.8;
     }
@@ -265,13 +269,13 @@ Video Metadata:
     return {
       category,
       confidence,
-      reasoning: `Classified based on duration (${metadata.duration}s) and aspect ratio (${aspectRatio.toFixed(2)})`,
+      reasoning: `Classified based on duration (${metadata.duration}s) and aspect ratio (${aspectRatio.toFixed(2)}). Defaulting to high-energy MrBeast-style editing for maximum engagement.`,
       editingRecommendations: {
-        pacing: category === 'product_ad' ? 'fast' : 'medium',
+        pacing: category === 'documentary' ? 'medium' : 'fast',
         transitionStyle: category === 'documentary' ? 'smooth' : 'quick',
         captionStyle: category === 'tutorial' ? 'highlight' : 'bold',
-        musicIntensity: category === 'product_ad' ? 'high' : 'medium',
-        zoomFrequency: category === 'product_ad' ? 'high' : 'low'
+        musicIntensity: category === 'documentary' ? 'low' : 'high',
+        zoomFrequency: category === 'documentary' ? 'low' : 'high'
       }
     };
   }
