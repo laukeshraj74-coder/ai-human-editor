@@ -2,65 +2,64 @@
 # Dependencies
 node_modules/
 
-# Build artifacts
+# Build outputs
 dist/
 build/
-.next/
-out/
-
-# Environment variables
-.env
-.env.local
-.env.*
-
-# IDE files
-.vscode/
-.idea/
-*.swp
-*.swo
+target/
 
 # Logs
 *.log
 
-# OS generated files
-.DS_Store
-Thumbs.db
+# Environment
+.env
+.env.local
+*.env.*
 
-# Temporary files
-*.tmp
+# Editors
+.vscode/
+.idea/
 
-# Coverage reports
-coverage/
-htmlcov/
-
-# Python specific
+# Python
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
-.pytest_cache/
-.mypy_cache/
+.Python
+env/
+venv/
+.venv/
+pip-log.txt
+pip-delete-this-directory.txt
+.tox/
 .coverage
+.coverage.*
+.cache
+nosetests.xml
+coverage.xml
+*.cover
+*.log
+.git/
+.mypy_cache/
+.pytest_cache/
+.hypothesis/
 
-# Node.js specific
+# Node.js
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
-
-# Electron specific
-release/
-electron-builder.yaml
+node_modules/
+jspm_packages/
+*.js.map
+*.mjs.map
+*.ts.map
+*.tsx.map
 
 # TypeScript
 *.tsbuildinfo
+.next/
+nuxt/dist/
 
-# Vite
-vite.config.js.timestamp*
-
-# Tailwind CSS
-.tailwind*
-
-# Source map files
-*.map
-
+# General
+.DS_Store
+Thumbs.db
 ```
