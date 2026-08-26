@@ -11,8 +11,12 @@ import {
   FFmpegProgress,
   VideoInfo,
   Caption,
+  VideoMetadata,
+  EditingPreset,
 } from '../shared/types';
 import { applyPresetToPlan } from './presets';
+import { universalAnalyzer } from './universalAnalyzer';
+import { normalizeVideo } from './ffmpeg';
 
 // SFX file paths (relative to project root)
 const SFX_LIBRARY: Record<string, string> = {
@@ -31,6 +35,8 @@ interface FFmpegJob {
   progress: FFmpegProgress;
   error?: string;
   outputPath?: string;
+  detectedCategory?: string;
+  analysisText?: string;
 }
 
 export class FFmpegEngine extends EventEmitter {
@@ -66,7 +72,7 @@ export class FFmpegEngine extends EventEmitter {
     });
   }
 
-  private buildSmartCutsFilter(cuts: CutPoint[], duration: number): string {
+  private buildSmartCutsFilter(cuts: CutPoint[]): string {
     const keepSegments = cuts.filter(c => c.keep !== false);
     if (keepSegments.length === 0) return '';
     if (keepSegments.length === 1) {
@@ -90,7 +96,7 @@ export class FFmpegEngine extends EventEmitter {
     return zoomFilters.join(',');
   }
 
-  private buildXfadeFilter(transitions: Transition[], duration: number): string {
+  private buildXfadeFilter(transitions: Transition[]): string {
     if (transitions.length === 0) return '';
     const transitionMap: Record<string, string> = {
       xfade: 'fade', fade: 'fade', slideleft: 'slideleft', slideright: 'slideright',
@@ -99,21 +105,21 @@ export class FFmpegEngine extends EventEmitter {
     };
     const filters: string[] = [];
     transitions.forEach((trans) => {
-      const offset = trans.offset ?? trans.timestamp;
+      const offset = trans.offset ?? trans.timestamp ?? 0;
       const xfadeType = transitionMap[trans.type] || 'fade';
       filters.push(`xfade=transition=${xfadeType}:duration=${trans.duration}:offset=${offset}`);
     });
     return filters.join(',');
   }
 
-  private buildCaptionFilters(captions: Caption[], width: number, height: number): string[] {
+  private buildCaptionFilters(captions: Caption[], _width: number, _height: number): string[] {
     const filters: string[] = [];
     captions.forEach((caption) => {
       const fontSize = caption.fontSize || 48;
       const fontColor = caption.fontColor || 'white';
       const bgColor = caption.backgroundColor || 'black@0.7';
       const style = caption.style || 'normal';
-      const animation = caption.animation || 'pop';
+      // animation is used in the drawtext filter below
       
       let yPos: string;
       switch (caption.position) {
@@ -140,26 +146,26 @@ export class FFmpegEngine extends EventEmitter {
   private buildAudioFilters(
     sfx: SFXEvent[], 
     backgroundMusic?: { enabled: boolean; filePath?: string; volume: number; fadeDuration: number },
-    duration: number = 60
+    _duration: number = 60
   ): string {
     const filters: string[] = [];
     let inputIndex = 1;
 
     if (sfx && sfx.length > 0) {
-      sfx.forEach((event, idx) => {
+      sfx.forEach((event) => {
         const sfxPath = event.filePath || SFX_LIBRARY[event.type];
         if (fs.existsSync(sfxPath)) {
           const volume = event.volume ?? 0.5;
           const delayMs = Math.floor(event.startTime * 1000);
-          filters.push(`[${inputIndex}:a]adelay=${delayMs}|${delayMs},volume=${volume}[sfx${idx}]`);
+          filters.push(`[${inputIndex}:a]adelay=${delayMs}|${delayMs},volume=${volume}[sfx${inputIndex}]`);
           inputIndex++;
         }
       });
 
       if (filters.length > 0) {
-        const sfxInputs = filters.map((_, i) => `[sfx${i}]`).join('');
+        const sfxInputs = filters.map((_, i) => `[sfx${i + 1}]`).join('');
         if (filters.length === 1) {
-          filters.push('[sfx0][sfx_out]');
+          filters.push('[sfx1][sfx_out]');
         } else {
           filters.push(`${sfxInputs}amix=inputs=${filters.length}:duration=shortest[sfx_out]`);
         }
@@ -169,7 +175,7 @@ export class FFmpegEngine extends EventEmitter {
     if (backgroundMusic?.enabled && backgroundMusic.filePath) {
       const musicVolume = backgroundMusic.volume ?? 0.3;
       const fadeDuration = backgroundMusic.fadeDuration ?? 1.0;
-      filters.push(`[${inputIndex}:a]volume=${musicVolume},afade=t=in:st=0:d=${fadeDuration},afade=t=out:st=${Math.max(0, duration - fadeDuration)}:d=${fadeDuration}[music]`);
+      filters.push(`[${inputIndex}:a]volume=${musicVolume},afade=t=in:st=0:d=${fadeDuration},afade=t=out:st=${Math.max(0, _duration - fadeDuration)}:d=${fadeDuration}[music]`);
       const hasSFX = filters.some(f => f.includes('[sfx_out]'));
       if (hasSFX) {
         filters.push('[0:a][sfx_out][music]amix=inputs=3:duration=longest[aout]');
@@ -183,20 +189,66 @@ export class FFmpegEngine extends EventEmitter {
     return filters.filter(f => f && !f.includes('amix=inputs=')).join(';');
   }
 
-  async executePlan(plan: EditingPlan): Promise<string> {
+  async executePlan(plan: EditingPlan, manualPreset?: EditingPreset): Promise<string> {
     const jobId = `job_${Date.now()}`;
     const inputPath = path.resolve(plan.inputPath);
+    const normalizedPath = path.join(this.outputDir, `normalized_${Date.now()}.mp4`);
     const outputPath = path.resolve(plan.outputPath || path.join(this.outputDir, `edited_${Date.now()}.mp4`));
 
-    if (plan.preset) {
-      const videoInfo = await this.getVideoInfo(inputPath);
-      plan = applyPresetToPlan({ ...plan, duration: videoInfo.duration }, plan.preset);
+    // Step 1: Normalize video format for universal compatibility
+    console.log('[Engine] Normalizing video format...');
+    try {
+      await normalizeVideo(inputPath, normalizedPath);
+      console.log('[Engine] Normalization complete:', normalizedPath);
+    } catch (err) {
+      console.warn('[Engine] Normalization failed, using original:', err);
+      // Continue with original if normalization fails
     }
 
-    const videoInfo = await this.getVideoInfo(inputPath);
+    const actualInputPath = fs.existsSync(normalizedPath) ? normalizedPath : inputPath;
+
+    // Step 2: Auto-detect video type and select preset if not manually specified
+    let selectedPreset = manualPreset || plan.preset;
+    let detectedCategory = 'unknown';
+    let analysisText = '';
+
+    if (!selectedPreset) {
+      try {
+        console.log('[Engine] Analyzing video content for automatic preset selection...');
+        const videoInfo = await this.getVideoInfo(actualInputPath);
+        const metadata: VideoMetadata = {
+          duration: videoInfo.duration,
+          width: videoInfo.width,
+          height: videoInfo.height,
+          fps: videoInfo.fps,
+          hasAudio: videoInfo.hasAudio,
+          codec: videoInfo.codec,
+        };
+
+        const analysis = await universalAnalyzer.analyzeVideo(metadata);
+        selectedPreset = analysis.recommendedPreset;
+        detectedCategory = analysis.category;
+        analysisText = analysis.analysis;
+        
+        console.log(`[Engine] Detected category: ${detectedCategory}, applying ${selectedPreset} preset`);
+      } catch (err) {
+        console.error('[Engine] Auto-detection failed, using default preset:', err);
+        selectedPreset = 'vlog';
+        analysisText = 'Auto-detection failed. Using default vlog preset.';
+      }
+    }
+
+    // Step 3: Apply preset to plan
+    if (selectedPreset) {
+      const videoInfo = await this.getVideoInfo(actualInputPath);
+      plan = applyPresetToPlan({ ...plan, duration: videoInfo.duration }, selectedPreset);
+      console.log(`[Engine] Applied ${selectedPreset} preset to editing plan`);
+    }
+
+    const videoInfo = await this.getVideoInfo(actualInputPath);
     const { duration, width, height, fps } = videoInfo;
 
-    let command = ffmpeg(inputPath);
+    let command = ffmpeg(actualInputPath);
 
     if (plan.backgroundMusic?.enabled && plan.backgroundMusic.filePath) {
       command = command.input(plan.backgroundMusic.filePath).inputOptions(['-stream_loop', '-1']);
@@ -215,7 +267,7 @@ export class FFmpegEngine extends EventEmitter {
     const videoFilters: string[] = [];
 
     if (plan.cuts && plan.cuts.length > 0) {
-      const cutFilter = this.buildSmartCutsFilter(plan.cuts, duration);
+      const cutFilter = this.buildSmartCutsFilter(plan.cuts);
       if (cutFilter) videoFilters.push(cutFilter);
     }
 
@@ -225,7 +277,7 @@ export class FFmpegEngine extends EventEmitter {
     }
 
     if (plan.transitions && plan.transitions.length > 0) {
-      const transitionFilter = this.buildXfadeFilter(plan.transitions, duration);
+      const transitionFilter = this.buildXfadeFilter(plan.transitions);
       if (transitionFilter) videoFilters.push(transitionFilter);
     }
 
@@ -248,7 +300,10 @@ export class FFmpegEngine extends EventEmitter {
     }
 
     command.outputOptions(['-c:v libx264', '-preset medium', '-crf 23', '-c:a aac', '-b:a 192k', '-movflags +faststart'])
-      .on('start', (cmd) => { console.log(`FFmpeg started: ${cmd}`); this.emit('start', { jobId, command: cmd }); })
+      .on('start', (cmd) => { 
+        console.log(`FFmpeg started: ${cmd}`); 
+        this.emit('start', { jobId, command: cmd, detectedCategory, analysisText }); 
+      })
       .on('progress', (progress) => {
         const ffmpegProgress: FFmpegProgress = {
           percent: progress.percent || 0, currentFps: progress.currentFps || 0,
@@ -257,23 +312,36 @@ export class FFmpegEngine extends EventEmitter {
         };
         this.emit('progress', { jobId, progress: ffmpegProgress });
       })
-      .on('end', () => { console.log(`FFmpeg completed: ${outputPath}`); this.emit('end', { jobId, outputPath }); })
-      .on('error', (err) => { console.error(`FFmpeg error: ${err.message}`); this.emit('error', { jobId, error: err.message }); })
+      .on('end', () => { 
+        console.log(`FFmpeg completed: ${outputPath}`); 
+        this.emit('end', { jobId, outputPath, detectedCategory, analysisText }); 
+      })
+      .on('error', (err) => { 
+        console.error(`FFmpeg error: ${err.message}`); 
+        this.emit('error', { jobId, error: err.message }); 
+      })
       .save(outputPath);
 
-    this.jobs.set(jobId, { id: jobId, command, status: 'running', progress: { percent: 0, currentFps: 0, currentKbps: 0, targetSize: 0, timemark: '00:00:00' } });
+    this.jobs.set(jobId, { 
+      id: jobId, 
+      command, 
+      status: 'running', 
+      progress: { percent: 0, currentFps: 0, currentKbps: 0, targetSize: 0, timemark: '00:00:00' },
+      detectedCategory,
+      analysisText
+    });
     return jobId;
   }
 
   getJobStatus(jobId: string): FFmpegJob | undefined { return this.jobs.get(jobId); }
 
-  cancelJob(_jobId: string): boolean {
-    const job = this.jobs.get(_jobId);
+  cancelJob(jobId: string): boolean {
+    const job = this.jobs.get(jobId);
     if (job && job.status === 'running') {
       job.command.kill('SIGTERM');
       job.status = 'failed';
       job.error = 'Cancelled by user';
-      this.emit('cancelled', { jobId: _jobId });
+      this.emit('cancelled', { jobId });
       return true;
     }
     return false;

@@ -1,5 +1,5 @@
 import React from 'react';
-import { X, Key, Film, Wand2 } from 'lucide-react';
+import { X, Key } from 'lucide-react';
 import { useAppStore } from '../hooks/useAppStore';
 
 interface SettingsPanelProps {
