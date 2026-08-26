@@ -349,7 +349,7 @@ export class FFmpegEngine extends EventEmitter {
 
   cleanupJobs(maxAge: number = 3600000): void {
     const now = Date.now();
-    for (const [id, job] of this.jobs.entries()) {
+    for (const [id] of this.jobs.entries()) {
       if (now - parseInt(id.split('_')[1]) > maxAge) this.jobs.delete(id);
     }
   }
