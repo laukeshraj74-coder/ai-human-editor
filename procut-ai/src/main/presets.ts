@@ -1,4 +1,4 @@
-import { PresetConfig, EditPreset } from '../shared/types';
+import { PresetConfig, EditPreset, EditingPreset } from '../shared/types';
 
 export const PRESETS: Record<EditPreset, PresetConfig> = {
   mrbeast: {
@@ -42,20 +42,20 @@ export const PRESETS: Record<EditPreset, PresetConfig> = {
 /**
  * Get preset configuration by name
  */
-export function getPreset(name: EditPreset): PresetConfig {
-  return PRESETS[name];
+export function getPreset(name: EditPreset | EditingPreset): PresetConfig {
+  return PRESETS[name as EditPreset];
 }
 
 /**
  * Apply preset to an editing plan
  * Modifies cuts, zooms, captions, and SFX based on preset settings
  */
-export function applyPresetToPlan(plan: any, preset: EditPreset): any {
-  const config = PRESETS[preset];
+export function applyPresetToPlan(plan: any, preset: EditPreset | EditingPreset): any {
+  const config = PRESETS[preset as EditPreset];
   
   return {
     ...plan,
-    preset,
+    preset: preset as EditPreset,
     // Adjust cuts based on pacing
     cuts: plan.cuts?.map((cut: any) => ({
       ...cut,
@@ -163,3 +163,6 @@ export function recommendPreset(videoInfo: {
   // Default to vlog style
   return 'vlog';
 }
+
+// Export presets object for direct access
+export const presets = PRESETS;

@@ -6,8 +6,8 @@ import { SettingsPanel } from './components/SettingsPanel';
 import { ProgressBar } from './components/ProgressBar';
 import { useAppStore } from './hooks/useAppStore';
 import { OmniRouteClient } from './services/omniRoute';
-import { getVideoInfo, generateFFmpegCommand, EditingPlan } from '../main/ffmpeg';
-import { ChatMessage } from '../shared/types';
+import { getVideoInfo, generateFFmpegCommand } from '../main/ffmpeg';
+import { ChatMessage, EditingPlan } from '../shared/types';
 
 function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -208,8 +208,8 @@ Type "export" to apply these edits and render your video!`,
         timestamp: new Date(),
       });
 
-      // Switch to edit view
-      setCurrentView('edit');
+      // Switch to edit view (show timeline)
+      setShowTimeline(true);
     } catch (error) {
       console.error('Error processing video:', error);
       setAnalyzing(false);

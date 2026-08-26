@@ -1,8 +1,7 @@
 import React from 'react';
-import { Send, Paperclip, Sun, Moon, Settings, Trash2 } from 'lucide-react';
+import { Send, Paperclip, Sun, Moon, Settings } from 'lucide-react';
 import { useAppStore } from '../hooks/useAppStore';
 import { useDarkMode } from '../hooks/useDarkMode';
-import { ChatMessage } from '../../shared/types';
 
 interface ChatInterfaceProps {
   onSendMessage: (content: string, attachments?: any[]) => void;

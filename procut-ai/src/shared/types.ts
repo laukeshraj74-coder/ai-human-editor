@@ -143,3 +143,16 @@ export interface VerificationResult {
   errors: string[];
   outputInfo?: VideoInfo;
 }
+
+export interface VideoMetadata {
+  duration: number;
+  width: number;
+  height: number;
+  fps: number;
+  hasAudio: boolean;
+  codec?: string;
+}
+
+export type VideoCategory = 'vlog' | 'tutorial' | 'documentary' | 'gaming' | 'product_ad' | 'interview' | 'other';
+
+export type EditingPreset = 'mrbeast' | 'documentary' | 'tutorial' | 'vlog';

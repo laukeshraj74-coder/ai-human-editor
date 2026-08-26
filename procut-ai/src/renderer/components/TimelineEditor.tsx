@@ -1,21 +1,17 @@
 import React from 'react';
-import { X, Check, AlertCircle } from 'lucide-react';
+import { X, Check } from 'lucide-react';
 import { CutPoint, Caption } from '../../shared/types';
 
 interface TimelineEditorProps {
   duration: number;
   cuts: CutPoint[];
   captions: Caption[];
-  onCutsChange?: (cuts: CutPoint[]) => void;
-  onCaptionsChange?: (captions: Caption[]) => void;
 }
 
 export const TimelineEditor: React.FC<TimelineEditorProps> = ({
   duration,
   cuts,
   captions,
-  onCutsChange,
-  onCaptionsChange,
 }) => {
   const formatTime = (seconds: number) => {
     const mins = Math.floor(seconds / 60);

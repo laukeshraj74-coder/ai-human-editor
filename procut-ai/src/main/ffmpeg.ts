@@ -328,8 +328,8 @@ export async function executeFFmpegCommand(
     }
     
     // Add background music and SFX
-    if (plan.backgroundMusic) {
-      command.input(plan.backgroundMusic);
+    if (plan.backgroundMusic?.filePath) {
+      command.input(plan.backgroundMusic.filePath);
       command.complexFilter([
         '[1:a]volume=0.3[a1]',
         '[0:a][a1]amix=inputs=2:duration=first'
@@ -338,8 +338,9 @@ export async function executeFFmpegCommand(
     
     // Add SFX (in production, would load actual SFX files)
     if (plan.sfx && plan.sfx.length > 0) {
-      plan.sfx.forEach((sfx, idx) => {
-        console.log(`SFX: Adding ${sfx.type} at ${sfx.timestamp}s`);
+      plan.sfx.forEach((sfx) => {
+        const sfxTime = (sfx as any).startTime || 0;
+        console.log(`SFX: Adding ${sfx.type} at ${sfxTime}s`);
         // Production implementation would add actual SFX files here
       });
     }
@@ -435,12 +436,91 @@ export async function executeSmartCuts(
   });
 }
 
-export { planCaptionsMap };
+export { planCaptionsMap, normalizeVideo };
 export default { 
   getVideoInfo, 
   cutVideo, 
   generateFFmpegCommand, 
   executeFFmpegCommand,
   executeSmartCuts,
+  normalizeVideo,
   planCaptionsMap
 };
+
+/**
+ * Normalize video to standard format for consistent processing
+ * Converts any input format to H.264 + AAC at 1080p/30fps
+ */
+async function normalizeVideo(inputPath: string, outputPath: string): Promise<void> {
+  return new Promise((resolve, reject) => {
+    // Get video info using fluent-ffmpeg
+    ffmpeg.ffprobe(inputPath, (err, metadata) => {
+      if (err || !metadata?.streams?.[0]) {
+        reject(new Error('Failed to get video metadata'));
+        return;
+      }
+
+      const stream = metadata.streams.find(s => s.codec_type === 'video');
+      if (!stream) {
+        reject(new Error('No video stream found'));
+        return;
+      }
+
+      const width = stream.width || 1920;
+      const height = stream.height || 1080;
+      const fps = stream.r_frame_rate ? parseFloat(stream.r_frame_rate.split('/')[0]) / parseFloat(stream.r_frame_rate.split('/')[1]) : 30;
+      
+      // Determine target resolution (scale to 1080p max, maintain aspect ratio)
+      let scaleFilter = 'scale=-1:-1'; // No scaling if already appropriate
+      const maxDimension = 1920;
+      
+      if (width > maxDimension || height > 1080) {
+        if (width > height) {
+          // Landscape: scale width to 1920, maintain aspect ratio
+          scaleFilter = `scale=1920:-1`;
+        } else {
+          // Portrait: scale height to 1080, maintain aspect ratio
+          scaleFilter = `scale=-1:1080`;
+        }
+      }
+      
+      // Build filter chain: scale + fps normalization
+      const filters: string[] = [];
+      
+      // Add scaling filter
+      filters.push(scaleFilter);
+      
+      // Normalize FPS to 30 (or keep original if it's 24/25/30/60)
+      const standardFPS = [24, 25, 30, 60];
+      if (!standardFPS.includes(Math.round(fps))) {
+        filters.push(`fps=30`);
+      }
+      
+      const filterComplex = filters.join(',');
+      
+      ffmpeg(inputPath)
+        .videoFilters(filterComplex !== 'scale=-1:-1' ? filterComplex : [])
+        .outputOptions([
+          '-c:v libx264',           // H.264 video codec
+          '-preset medium',         // Balance between speed and quality
+          '-crf 23',                // Quality level (18-28 is good range)
+          '-c:a aac',               // AAC audio codec
+          '-b:a 192k',              // Audio bitrate
+          '-movflags +faststart',   // Web optimization
+          '-y'                      // Overwrite output
+        ])
+        .on('start', (cmd) => {
+          console.log('[FFmpeg] Normalization command:', cmd);
+        })
+        .on('error', (err) => {
+          console.error('[FFmpeg] Normalization error:', err.message);
+          reject(err);
+        })
+        .on('end', () => {
+          console.log('[FFmpeg] Normalization complete:', outputPath);
+          resolve();
+        })
+        .save(outputPath);
+    });
+  });
+}

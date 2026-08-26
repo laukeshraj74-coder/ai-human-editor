@@ -144,11 +144,11 @@ export class VideoVerifier {
           return;
         }
 
-        const videoDuration = videoStream.duration || metadata.format.duration || 0;
-        const audioDuration = audioStream.duration || metadata.format.duration || 0;
+        const videoDuration = (videoStream as any).duration || metadata.format.duration || 0;
+        const audioDuration = (audioStream as any).duration || metadata.format.duration || 0;
 
         // Allow 0.5 second tolerance
-        const diff = Math.abs(videoDuration - audioDuration);
+        const diff = Math.abs(Number(videoDuration) - Number(audioDuration));
         resolve(diff < 0.5);
       });
     });
@@ -162,7 +162,7 @@ export class VideoVerifier {
       let frameCount = 0;
       let errorOccurred = false;
 
-      const proc = ffmpeg(inputPath)
+      ffmpeg(inputPath)
         .on('error', () => {
           errorOccurred = true;
         })
@@ -170,12 +170,6 @@ export class VideoVerifier {
           resolve(!errorOccurred && frameCount > 0);
         })
         .frames(5)
-        .on('frame', () => {
-          frameCount++;
-          if (frameCount >= 5) {
-            proc.kill();
-          }
-        })
         .save('/dev/null');
     });
   }

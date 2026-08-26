@@ -1,5 +1,5 @@
 import React, { useCallback, useState } from 'react';
-import { Upload, FileVideo, X } from 'lucide-react';
+import { FileVideo, X } from 'lucide-react';
 
 interface FileUploadProps {
   onFileSelect: (file: File, path?: string) => void;
