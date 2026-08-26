@@ -12,12 +12,10 @@ import { ChatMessage } from '../shared/types';
 function App() {
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [showTimeline, setShowTimeline] = useState(false);
-  const [currentView, setCurrentView] = useState<'chat' | 'edit'>('chat');
   
   const {
     currentVideo,
     videoDuration,
-    videoInfo,
     isAnalyzing,
     analysisProgress,
     videoAnalysis,
@@ -184,7 +182,7 @@ You can also type "analyze" to start analysis or "export" to render the final vi
         })),
         effects: mockAnalysis.effects,
         captions: mockAnalysis.captions,
-      };
+      } as EditingPlan;
 
       setEditingPlan(editPlan);
       setAnalyzing(false);
