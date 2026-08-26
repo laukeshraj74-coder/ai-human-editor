@@ -1,4 +1,3 @@
-import { OmniRouteClient } from './omniRoute';
 import { VideoMetadata, VideoCategory, EditingPreset, PresetConfig } from '../shared/types';
 import { presets } from './presets';
 
@@ -7,10 +6,9 @@ import { presets } from './presets';
  * Analyzes video content using AI to automatically classify and select optimal editing preset
  */
 export class UniversalAnalyzer {
-  private omniRoute: OmniRouteClient;
 
-  constructor(apiKey?: string) {
-    this.omniRoute = new OmniRouteClient({ apiKey: apiKey || process.env.OMNIROUTE_API_KEY || '' });
+  constructor(_apiKey?: string) {
+    // OmniRoute client initialized when needed
   }
 
   /**

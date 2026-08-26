@@ -5,71 +5,46 @@ node_modules/
 # Build outputs
 dist/
 build/
-*.js.map
+target/
+
+# Logs
+*.log
 
 # Environment
 .env
 .env.local
 *.env.*
 
-# Editors
+# Editor/IDE
 .vscode/
 .idea/
 *.swp
 *.swo
-
-# Logs
-*.log
-
-# Temp files
 *.tmp
 
-# OS
-.DS_Store
-Thumbs.db
-
-# Python (if any Python files exist in project)
+# Python
 __pycache__/
 *.pyc
 *.pyo
 *.pyd
-
-# Java (if any Java files exist in project)
-*.class
-*.jar
-*.war
-*.ear
-target/
-.gradle/
-
-# C/C++ (if any C/C++ files exist in project)
-*.o
-*.obj
-*.a
-*.lib
+.Python
 *.so
-*.dll
-*.exe
-*.out
-
-# Go (if any Go files exist in project)
-*.exe
-*.dll
-*.so
-*.dylib
-
-# Coverage
-coverage/
-htmlcov/
 .coverage
-
-# Testing
-.mypy_cache/
+htmlcov/
+.coverage.*
 .pytest_cache/
-.nyc_output/
-coverage/lcov-report/
+.mypy_cache/
 
-# Compressed files
+# Node.js
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Compression
 *.zip
 *.gz
 *.tar
